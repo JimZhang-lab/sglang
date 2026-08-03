@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import dataclasses
 import glob
 import importlib
@@ -8375,56 +8376,62 @@ class ServerArgs:
 
         return resolved_view(self)
 
-    def override(self, source: str, **fields) -> None:
-        """The single post-resolution mutation point.
+    def derive(self, source: str, **fields) -> ServerArgs:
+        """A copy carrying variant values: a draft worker's context length, an
+        encode worker's device, a launcher's late port pick.
 
-        After ``__post_init__`` the configuration is resolved; the audited
-        runtime adjustments (load-resolved values, control-plane
-        reconfiguration, deployment wiring) go through here instead of
-        assigning fields. Whitelisted resolvable fields also join the
-        declaration stash, so a republish resolves the same values;
-        everything is recorded with its ``source`` for provenance.
+        The receiver is untouched, so a config already published from it -- and
+        the namespace bags projected out of it -- stay true; the variant is a
+        second config, to be published in its own right or handed to whoever
+        owns it. Resolution does not re-run: the values being set are decided
+        *after* it, from inputs resolution never had, and re-resolving a
+        resolved config re-derives conditional decisions from the wrong ones.
+
+        Whitelisted resolvable fields also join the copy's declaration stash so
+        a later re-resolution keeps them; ``source`` is recorded for provenance.
         """
         from sglang.srt.arg_groups.arg_utils import resolvable_fields
 
-        whitelist = resolvable_fields(type(self))
+        variant = copy.deepcopy(self)
+        whitelist = resolvable_fields(type(variant))
         declared = {k: v for k, v in fields.items() if k in whitelist}
         rest = {k: v for k, v in fields.items() if k not in whitelist}
         if declared:
-            stash = getattr(self, "_resolved_overrides", None)
+            stash = getattr(variant, "_resolved_overrides", None)
             if stash is None:
                 stash = []
-                object.__setattr__(self, "_resolved_overrides", stash)
+                object.__setattr__(variant, "_resolved_overrides", stash)
             stash.append((source, dict(declared)))
         if rest:
-            log = getattr(self, "_runtime_mutations", None)
+            log = getattr(variant, "_runtime_mutations", None)
             if log is None:
                 log = []
-                object.__setattr__(self, "_runtime_mutations", log)
+                object.__setattr__(variant, "_runtime_mutations", log)
             log.append((source, dict(rest)))
-        object.__setattr__(self, "_in_override", True)
+        object.__setattr__(variant, "_internal_write", True)
         try:
             for field, value in fields.items():
-                setattr(self, field, value)
+                setattr(variant, field, value)
         finally:
-            object.__setattr__(self, "_in_override", False)
+            object.__setattr__(variant, "_internal_write", False)
+        return variant
 
     def __setattr__(self, name, value):
-        # after materialization the fields are the resolved startup
-        # configuration -- the pristine, READ-ONLY record. A bare assignment
-        # outside ServerArgs.override() (and the resolution pipeline, which runs
-        # before materialization) always raises; resolved config is mutated on
-        # the context bags via get_context().override(...), not here. (Formerly
-        # gated on SGLANG_STRICT_CONFIG_MUTATION; now unconditional.)
+        # After materialization the fields are the resolved startup
+        # configuration -- the pristine, READ-ONLY record that the config bags
+        # were projected from. Resolved config changes go to the bags via
+        # get_context().override(source, ...); a config that differs per runner
+        # or per worker is a separate object, built with derive().
         if (
             not name.startswith("_")
             and getattr(self, "_declarations_materialized", False)
-            and not getattr(self, "_in_override", False)
+            and not getattr(self, "_internal_write", False)
         ):
             raise AttributeError(
                 f"server_args.{name} assigned after resolution; server_args is "
                 "read-only -- use get_context().override(source, ...) to change "
-                "resolved config."
+                "resolved config, or server_args.derive(source, ...) to build a "
+                "variant for one runner."
             )
         object.__setattr__(self, name, value)
 

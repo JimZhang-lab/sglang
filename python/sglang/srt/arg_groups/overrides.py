@@ -205,12 +205,12 @@ def run_post_process_pass(server_args: Any, fn: Callable[..., dict]) -> None:
 def _apply_fields(server_args: Any, fields: Dict[str, Any]) -> None:
     """Write fields on behalf of the pipeline (bypasses the strict bare-
     assignment guard that protects post-resolution mutation)."""
-    object.__setattr__(server_args, "_in_override", True)
+    object.__setattr__(server_args, "_internal_write", True)
     try:
         for field, value in fields.items():
             setattr(server_args, field, value)
     finally:
-        object.__setattr__(server_args, "_in_override", False)
+        object.__setattr__(server_args, "_internal_write", False)
 
 
 def materialize_declarations(server_args: Any) -> None:

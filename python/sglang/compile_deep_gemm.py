@@ -169,21 +169,20 @@ def launch_server_process_and_send_one_request(
     )
 
 
-def refine_server_args(server_args: ServerArgs, compile_args: CompileArgs):
-    # Disable cuda graph and torch compile to save time. Writes after
-    # ServerArgs.__post_init__ don't propagate to cuda_graph_config via the
-    # legacy disable_cuda_graph field, so flip both phases directly.
-    server_args.cuda_graph_config[Phase.DECODE].backend = Backend.DISABLED
-    server_args.cuda_graph_config[Phase.PREFILL].backend = Backend.DISABLED
-    print(f"Disable CUDA Graph and Torch Compile to save time...")
-
+def refine_server_args(
+    server_args: ServerArgs, compile_args: CompileArgs
+) -> ServerArgs:
     # Watchdog timeout follows compile_args.timeout because compilation takes long.
-    server_args.override(
+    server_args = server_args.derive(
         "compile_deep_gemm.refine_server_args",
         enable_torch_compile=False,
         watchdog_timeout=compile_args.timeout,
         warmups="compile-deep-gemm",
     )
+    server_args.cuda_graph_config[Phase.DECODE].backend = Backend.DISABLED
+    server_args.cuda_graph_config[Phase.PREFILL].backend = Backend.DISABLED
+    print(f"Disable CUDA Graph and Torch Compile to save time...")
+    return server_args
 
 
 def run_compile(server_args: ServerArgs, compile_args: CompileArgs):
@@ -219,6 +218,6 @@ if __name__ == "__main__":
     server_args = ServerArgs.from_cli_args(args)
     compile_args = CompileArgs.from_cli_args(args)
 
-    refine_server_args(server_args, compile_args)
+    server_args = refine_server_args(server_args, compile_args)
 
     run_compile(server_args, compile_args)

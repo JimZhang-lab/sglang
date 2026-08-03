@@ -49,8 +49,15 @@ resolved configuration lives in the namespace bags.**
   `get_context().override(source, **fields)`. It writes the bag leaves in place
   (namespace readers see the new value) and records provenance in the overrides log.
   There is **no write-through** to the `ServerArgs` instance — it stays pristine.
-  `ServerArgs.override(...)` (instance-only) is being retired; its call sites are
-  ratcheted down and new ones are rejected.
+  There is no in-place mutation entry on the instance at all: it is read-only after
+  resolution.
+- **A config that differs for one runner / worker / process**: `server_args.derive(
+  source, **fields)` returns a variant (a draft's `context_length`, an encode
+  worker's `base_gpu_id`, a launcher-stage detection result to be inherited by the
+  processes it spawns). The receiver — and any bags projected from it — are
+  untouched; resolution does **not** re-run, so do not reach for it to "re-resolve"
+  a config. Publish the variant if the code that reads it reads bags
+  (`preserve_config` + `set_server_args` for a nested build).
 - **Nested publishes**: a construction step that must publish a private copy (the
   draft-worker build publishes the draft's rewritten config for the duration of the
   build) wraps itself in `get_context().preserve_config()` — the enclosing lifecycle,
@@ -209,18 +216,18 @@ ONE thread — do not design for TBO threads that don't exist.
 ## Guardrails (these fail CI; what to do when they fire)
 
 1. **Strict mutation guard** (always on): bare `server_args.x = ...` after resolution
-   raises unconditionally — `ServerArgs.__setattr__` no longer consults
-   `SGLANG_STRICT_CONFIG_MUTATION` (the env var survives only as a legacy harness
-   flag). Projected bags are sealed the same way (leaf assignment raises — write via
-   `get_context().override`).
+   raises unconditionally in `ServerArgs.__setattr__` — this *is* the guarantee that
+   no writer can desync the bags, so there is no writer ratchet any more. Change
+   resolved config with `get_context().override`, build a per-runner config with
+   `server_args.derive`. Projected bags are sealed the same way (leaf assignment
+   raises).
 2. **Mutation ratchet** (`test_server_args_mutation_ratchet.py`, exact pin 0 over the whole
    package minus the pipeline / multimodal_gen): textual scan for assignment forms. Never
    raise the baseline.
-3. **Writer ratchet** (`test_server_args_writer_ratchet.py`): `ServerArgs.override`
-   call sites are pinned exactly and may only shrink — instance writes never reach the
-   bags, so namespace readers desync from the writer. New post-publish writes go through
-   `get_context().override`; rerouting a writer means flipping **all its readers to the
-   bag in the same commit** (no transitional dual-write).
+3. **Derive contract** (`test_server_args_derive.py`): deriving leaves the receiver
+   intact, a published config still refuses assignment, and deriving does not publish.
+   Rerouting a writer to the bags means flipping **all its readers in the same commit**
+   (no transitional dual-write).
 4. **Legacy-accessor ratchet** (`test_legacy_global_ratchet.py`): `get_global_server_args`
    call sites must not grow — new code uses `runtime_context.get_server_args()` (and
    business decisions should read the bags).
