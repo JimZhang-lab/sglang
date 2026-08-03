@@ -31,6 +31,8 @@ What legitimately remains:
     reads ``get_dcp_group()``, and that group is only installed when DCP is on.
   - ``cuda_ipc_transport_utils.tp_size`` runs in the tokenizer process, which has
     no groups at all (the call site already guards for "not published yet").
+  - ``model_loader/loader.py`` reports both: the same dict carries the live
+    ``moe_dp_size`` under ``"dp"``, so this entry is the configured intent.
 - The alias-form baseline is not zero yet. Lowering it is the next slice; the
   failure message lists the sites whenever the count moves.
 """
@@ -68,12 +70,13 @@ _CONFIG_INTENT_SIZES = frozenset(
     {
         ("srt/layers/attention/dsa/dsa_indexer.py", "pp_size"),
         ("srt/mem_cache/allocation.py", "dcp_size"),
+        ("srt/model_loader/loader.py", "moe_dp_size"),
         ("srt/utils/cuda_ipc_transport_utils.py", "tp_size"),
     }
 )
 
 _DIRECT_BASELINE = 0
-_ALIAS_BASELINE = 12
+_ALIAS_BASELINE = 0
 
 
 def _is_global_call(node) -> bool:
