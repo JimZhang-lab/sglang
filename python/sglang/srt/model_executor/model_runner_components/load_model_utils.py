@@ -169,6 +169,7 @@ def build_load_config(
     *,
     server_args: ServerArgs,
     tp_rank: int,
+    load_format: Optional[str] = None,
     remote_instance_weight_transporter_engine: Any,
     remote_instance_weight_transporter_session_id: str,
     draft_model_idx: Optional[int],
@@ -186,7 +187,7 @@ def build_load_config(
     )
 
     return LoadConfig(
-        load_format=server_args.load_format,
+        load_format=load_format or server_args.load_format,
         download_dir=server_args.download_dir,
         model_loader_extra_config=server_args.model_loader_extra_config,
         tp_rank=tp_rank,
