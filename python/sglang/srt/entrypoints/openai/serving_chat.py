@@ -202,8 +202,8 @@ class OpenAIServingChat(OpenAIServingBase):
     ):
         super().__init__(tokenizer_manager)
         self.template_manager = template_manager
-        self.tool_call_parser = self.tokenizer_manager.server_args.tool_call_parser
-        self.reasoning_parser = self.tokenizer_manager.server_args.reasoning_parser
+        self.tool_call_parser = self.tokenizer_manager.config_value("tool_call_parser")
+        self.reasoning_parser = self.tokenizer_manager.config_value("reasoning_parser")
         self.default_chat_template_kwargs = (
             self.tokenizer_manager.server_args.default_chat_template_kwargs or {}
         )
